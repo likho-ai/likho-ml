@@ -91,7 +91,7 @@ async def test_what_the_registry_refuses(service: Service) -> None:
 
 async def test_a_call_of_a_later_step_says_so(service: Service) -> None:
     with pytest.raises(grpc.aio.AioRpcError) as later:
-        await service.stub.ListGoldSet(ml_pb2.ListGoldSetRequest(workspace_id="wsp_x"))
+        await service.stub.ExportDataset(ml_pb2.ExportDatasetRequest(workspace_id="wsp_x"))
     assert later.value.code() == grpc.StatusCode.UNIMPLEMENTED
 
 

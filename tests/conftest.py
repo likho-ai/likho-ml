@@ -43,23 +43,57 @@ class FakeTranscripts(transcription_pb2_grpc.TranscriptionServiceServicer):
 
     def __init__(self) -> None:
         self.transcripts: dict[str, transcription_pb2.Transcript] = {}
+        # (recording, model registry id) -> the lines that model "hears", for evaluations.
+        self.hypotheses: dict[tuple[str, str], list[tuple[float, float, str, str]]] = {}
+        self.evaluations_asked: list[transcription_pb2.TranscribeRequest] = []
 
-    def put(self, transcript_id: str, recording_id: str, lines: list[tuple[float, float, str, str]]) -> None:
-        self.transcripts[transcript_id] = transcription_pb2.Transcript(
+    @staticmethod
+    def _transcript(
+        transcript_id: str, recording_id: str, version: int, lines: list[tuple[float, float, str, str]]
+    ) -> transcription_pb2.Transcript:
+        return transcription_pb2.Transcript(
             id=transcript_id,
             recording_id=recording_id,
-            version=2,
+            version=version,
             language=common_pb2.LanguageDetection(detected="hi", decoded_as="hi"),
             segments=[
                 common_pb2.Segment(index=i, start_seconds=start, end_seconds=end, text_script=script, text_roman=roman)
                 for i, (start, end, script, roman) in enumerate(lines)
             ],
+            stats=transcription_pb2.TranscriptStats(
+                audio_seconds=max((end for _, end, _, _ in lines), default=0.0), elapsed_seconds=1.0
+            ),
         )
+
+    def put(
+        self, transcript_id: str, recording_id: str, lines: list[tuple[float, float, str, str]], version: int = 2
+    ) -> None:
+        self.transcripts[transcript_id] = self._transcript(transcript_id, recording_id, version, lines)
 
     async def GetTranscript(self, request: Any, context: grpc.aio.ServicerContext) -> Any:  # noqa: N802
         if request.id not in self.transcripts:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"no transcript {request.id}")
         return transcription_pb2.GetTranscriptResponse(transcript=self.transcripts[request.id])
+
+    async def ListTranscripts(self, request: Any, context: grpc.aio.ServicerContext) -> Any:  # noqa: N802
+        found = [t for t in self.transcripts.values() if t.recording_id == request.recording_id]
+        listed = [transcription_pb2.Transcript(id=t.id, recording_id=t.recording_id, version=t.version) for t in found]
+        return transcription_pb2.ListTranscriptsResponse(transcripts=listed)
+
+    async def Transcribe(self, request: Any, context: grpc.aio.ServicerContext) -> Any:  # noqa: N802
+        self.evaluations_asked.append(request)
+        if "broken" in request.model_registry_id:
+            await context.abort(
+                grpc.StatusCode.FAILED_PRECONDITION, f"model_unavailable: {request.model_registry_id} cannot be loaded"
+            )
+        lines = self.hypotheses.get((request.recording_id, request.model_registry_id))
+        if lines is None:
+            await context.abort(grpc.StatusCode.INTERNAL, "audio_unreadable: the audio file could not be read")
+        transcript = self._transcript(new_id("trn"), request.recording_id, 0, lines or [])
+        yield transcription_pb2.TranscribeResponse(started=transcription_pb2.TranscribeStarted(audio_seconds=10))
+        for segment in transcript.segments:
+            yield transcription_pb2.TranscribeResponse(segment=segment)
+        yield transcription_pb2.TranscribeResponse(completed=transcript)
 
 
 @dataclass
