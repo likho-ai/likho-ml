@@ -10,14 +10,16 @@ from datetime import UTC, datetime
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
-from likho.ml.v1 import ml_pb2
+from likho.ml.v1 import ml_pb2, ml_pb2_grpc
 from sqlalchemy import text
 
 from likho_ml import __version__
-from likho_ml.db import make_engine, upgrade
+from likho_ml.db import make_engine, make_sessions, upgrade
 from likho_ml.events import NatsPublisher
+from likho_ml.grpc_server import MlServicer
 from likho_ml.health import start_health_server
 from likho_ml.metrics import MetricsInterceptor, shared
+from likho_ml.registry import Registry
 from likho_ml.settings import Settings
 
 log = logging.getLogger("likho_ml")
@@ -64,10 +66,14 @@ async def serve(settings: Settings, stop: asyncio.Event | None = None) -> None:
         # The registry still answers; changes are then not announced (readers also ask now and then).
         log.exception("event bus not reachable at %s; changes will not be announced", settings.nats_url)
 
+    registry = Registry(make_sessions(engine), publisher)
+    await registry.seed(settings.seed_model_ids)
+
     server = grpc.aio.server(
         options=[("grpc.max_receive_message_length", 8 * 1024 * 1024)],
         interceptors=[MetricsInterceptor(metrics)],
     )
+    ml_pb2_grpc.add_MlServiceServicer_to_server(MlServicer(registry), server)
     health_servicer = health.aio.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     await health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.SERVING)

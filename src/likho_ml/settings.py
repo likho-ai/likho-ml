@@ -37,3 +37,11 @@ class Settings(BaseSettings):
 
     # Create or update the tables when the service starts.
     migrate_on_start: bool = True
+
+    # The engine's published sizes, registered at start if missing (comma-separated registry ids).
+    # The first becomes the default while there is none: what likho-transcription used before.
+    seed_models: str = "faster-whisper/turbo,faster-whisper/large-v3,faster-whisper/medium,faster-whisper/small"
+
+    @property
+    def seed_model_ids(self) -> list[str]:
+        return [item.strip() for item in self.seed_models.split(",") if item.strip()]
