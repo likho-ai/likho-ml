@@ -10,6 +10,7 @@ from likho.ml.v1 import ml_pb2, ml_pb2_grpc
 
 from likho_ml.models import ModelRow
 from likho_ml.registry import NewModel, Registry, RegistryError
+from likho_ml.training import TrainingStore
 
 log = logging.getLogger(__name__)
 
@@ -57,8 +58,24 @@ async def answer[T](context: grpc.aio.ServicerContext, call: Callable[[], Awaita
 
 
 class MlServicer(ml_pb2_grpc.MlServiceServicer):
-    def __init__(self, registry: Registry) -> None:
+    def __init__(self, registry: Registry, training: TrainingStore) -> None:
         self._registry = registry
+        self._training = training
+
+    async def GetTrainingStats(self, request: ml_pb2.GetTrainingStatsRequest, context: grpc.aio.ServicerContext) -> Any:
+        if not request.workspace_id:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Name the workspace.")
+        stats = await self._training.stats(request.workspace_id)
+        reply = ml_pb2.GetTrainingStatsResponse(
+            examples=stats.examples,
+            script_examples=stats.script_examples,
+            roman_examples=stats.roman_examples,
+            recordings=stats.recordings,
+            audio_seconds=stats.audio_seconds,
+        )
+        if stats.last_example_at is not None:
+            reply.last_example_at.CopyFrom(timestamp(stats.last_example_at))
+        return reply
 
     async def ListModels(self, request: ml_pb2.ListModelsRequest, context: grpc.aio.ServicerContext) -> Any:
         rows = await self._registry.list_models(include_retired=request.include_retired)

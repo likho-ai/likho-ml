@@ -15,9 +15,12 @@ from typing import Any
 import grpc
 import pytest
 import pytest_asyncio
+from likho.common.v1 import common_pb2
 from likho.ml.v1 import ml_pb2_grpc
+from likho.transcription.v1 import transcription_pb2, transcription_pb2_grpc
 
 from likho_ml.__main__ import serve
+from likho_ml.ids import new_id
 from likho_ml.settings import Settings
 
 
@@ -35,16 +38,53 @@ def _reachable(host: str, port: int) -> bool:
         return False
 
 
+class FakeTranscripts(transcription_pb2_grpc.TranscriptionServiceServicer):
+    """A stand-in for likho-transcription: GetTranscript answers the transcripts a test put here."""
+
+    def __init__(self) -> None:
+        self.transcripts: dict[str, transcription_pb2.Transcript] = {}
+
+    def put(self, transcript_id: str, recording_id: str, lines: list[tuple[float, float, str, str]]) -> None:
+        self.transcripts[transcript_id] = transcription_pb2.Transcript(
+            id=transcript_id,
+            recording_id=recording_id,
+            version=2,
+            language=common_pb2.LanguageDetection(detected="hi", decoded_as="hi"),
+            segments=[
+                common_pb2.Segment(index=i, start_seconds=start, end_seconds=end, text_script=script, text_roman=roman)
+                for i, (start, end, script, roman) in enumerate(lines)
+            ],
+        )
+
+    async def GetTranscript(self, request: Any, context: grpc.aio.ServicerContext) -> Any:  # noqa: N802
+        if request.id not in self.transcripts:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"no transcript {request.id}")
+        return transcription_pb2.GetTranscriptResponse(transcript=self.transcripts[request.id])
+
+
 @dataclass
 class Service:
     settings: Settings
     stub: ml_pb2_grpc.MlServiceStub
     channel: grpc.aio.Channel
+    transcripts: FakeTranscripts
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def service() -> AsyncIterator[Service]:
-    settings = Settings(grpc_port=_free_port(), http_port=_free_port(), log_level="WARNING")
+    fake = FakeTranscripts()
+    fake_server = grpc.aio.server()
+    transcription_pb2_grpc.add_TranscriptionServiceServicer_to_server(fake, fake_server)
+    fake_port = fake_server.add_insecure_port("127.0.0.1:0")
+    await fake_server.start()
+    settings = Settings(
+        grpc_port=_free_port(),
+        http_port=_free_port(),
+        log_level="WARNING",
+        transcription_grpc_addr=f"127.0.0.1:{fake_port}",
+        corrected_durable="test-" + new_id("ml")[-12:].lower(),  # this run's own consumer
+        corrected_start="new",
+    )
     # postgresql+asyncpg://user:pass@host:port/db  and  nats://host:port
     db_host, db_port = settings.database_url.rsplit("@", 1)[1].split("/", 1)[0].split(":")
     nats_host, nats_port = settings.nats_url.split("//", 1)[1].split(":")
@@ -69,11 +109,22 @@ async def service() -> AsyncIterator[Service]:
         await task  # surfaces the start-up error
         raise
 
-    yield Service(settings, ml_pb2_grpc.MlServiceStub(channel), channel)
+    yield Service(settings, ml_pb2_grpc.MlServiceStub(channel), channel, fake)
 
     await channel.close()
     stop.set()
     await asyncio.wait_for(task, timeout=30)
+    await fake_server.stop(grace=1)
+    # The durable consumer would otherwise stay on the server.
+    import nats
+
+    connection = await nats.connect(settings.nats_url)
+    try:
+        await connection.jetstream().delete_consumer("LIKHO_KEEP", settings.corrected_durable)
+    except Exception:
+        pass
+    finally:
+        await connection.close()
 
 
 class Events:

@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # The first becomes the default while there is none: what likho-transcription used before.
     seed_models: str = "faster-whisper/turbo,faster-whisper/large-v3,faster-whisper/medium,faster-whisper/small"
 
+    # likho-transcription: the lines of corrected transcripts (audio spans and both layers).
+    transcription_grpc_addr: str = "localhost:5020"
+    rpc_timeout_seconds: float = 10.0
+
+    # Keep people's corrections as training examples (likho.transcript.corrected, stream LIKHO_KEEP).
+    consumers_enabled: bool = True
+    # Instances with the same name share the corrections; "all" also takes every correction made
+    # before this service existed (the stream keeps them for ever).
+    corrected_durable: str = "likho-ml-corrected"
+    corrected_start: str = "all"
+
     @property
     def seed_model_ids(self) -> list[str]:
         return [item.strip() for item in self.seed_models.split(",") if item.strip()]
