@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://likho-ai.github.io/likho-contracts/events/likho.model.chosen.v1.schema.json",
+  "title": "A model is chosen as the default",
+  "description": "data of likho.model.chosen.v1; published by likho-ml on NATS subject likho.model.chosen when an admin makes another model the default. likho-transcription uses it for the next job (it also asks likho-ml now and then, so a missed event is not a stuck default).",
+  "type": "object",
+  "required": [
+    "model_id",
+    "registry_id",
+    "previous_registry_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "pattern": "^mdl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "registry_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "<engine>/<name>, e.g. faster-whisper/turbo"
+    },
+    "previous_registry_id": {
+      "type": "string",
+      "description": "Empty at the very first default"
+    },
+    "user_id": {
+      "type": "string",
+      "pattern": "^usr_[0-9A-HJKMNP-TV-Z]{26}$"
+    }
+  }
+}

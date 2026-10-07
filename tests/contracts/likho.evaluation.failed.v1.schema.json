@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://likho-ai.github.io/likho-contracts/events/likho.evaluation.failed.v1.schema.json",
+  "title": "An evaluation could not finish",
+  "description": "data of likho.evaluation.failed.v1; published by likho-ml on NATS subject likho.evaluation.failed when an evaluation stops without scores (no gold recordings, the model cannot be loaded, every recording failed).",
+  "type": "object",
+  "required": [
+    "evaluation_id",
+    "workspace_id",
+    "model_id",
+    "code",
+    "message"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "evaluation_id": {
+      "type": "string",
+      "pattern": "^evl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^wsp_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "model_id": {
+      "type": "string",
+      "pattern": "^mdl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "registry_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "<engine>/<name>, e.g. faster-whisper/turbo"
+    },
+    "code": {
+      "type": "string",
+      "enum": [
+        "empty_gold_set",
+        "model_unavailable",
+        "all_failed",
+        "internal"
+      ]
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}

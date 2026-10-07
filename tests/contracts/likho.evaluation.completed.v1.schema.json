@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://likho-ai.github.io/likho-contracts/events/likho.evaluation.completed.v1.schema.json",
+  "title": "A model is scored on a gold set",
+  "description": "data of likho.evaluation.completed.v1; published by likho-ml on NATS subject likho.evaluation.completed when every gold recording of a workspace has been transcribed by a model and scored. Rates are corpus error rates (weighted by reference length); the items are fetched over gRPC (MlService.GetEvaluation).",
+  "type": "object",
+  "required": [
+    "evaluation_id",
+    "workspace_id",
+    "model_id",
+    "registry_id",
+    "items_scored",
+    "wer_script",
+    "cer_script",
+    "wer_roman",
+    "cer_roman"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "evaluation_id": {
+      "type": "string",
+      "pattern": "^evl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^wsp_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "model_id": {
+      "type": "string",
+      "pattern": "^mdl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "registry_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "<engine>/<name>, e.g. faster-whisper/turbo"
+    },
+    "items_scored": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "items_failed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "audio_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "realtime_factor": {
+      "type": "number",
+      "minimum": 0
+    },
+    "wer_script": {
+      "type": "number",
+      "minimum": 0
+    },
+    "cer_script": {
+      "type": "number",
+      "minimum": 0
+    },
+    "wer_roman": {
+      "type": "number",
+      "minimum": 0
+    },
+    "cer_roman": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://likho-ai.github.io/likho-contracts/events/likho.model.registered.v1.schema.json",
+  "title": "A speech model is registered",
+  "description": "data of likho.model.registered.v1; published by likho-ml on NATS subject likho.model.registered when a model is added to the registry (one of an engine's own sizes at first start, or a fine-tuned one).",
+  "type": "object",
+  "required": [
+    "model_id",
+    "registry_id",
+    "engine"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "model_id": {
+      "type": "string",
+      "pattern": "^mdl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "registry_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "<engine>/<name>, e.g. faster-whisper/turbo"
+    },
+    "engine": {
+      "type": "string"
+    },
+    "base_model_id": {
+      "type": "string",
+      "pattern": "^mdl_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "artifact_uri": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string",
+      "pattern": "^usr_[0-9A-HJKMNP-TV-Z]{26}$"
+    }
+  }
+}
