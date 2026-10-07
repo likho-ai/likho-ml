@@ -9,8 +9,9 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from likho.ml.v1 import ml_pb2, ml_pb2_grpc
 
 from likho_ml.evaluation import Evaluations
+from likho_ml.finetune import FineTuning
 from likho_ml.gold import GoldSet
-from likho_ml.models import EvaluationItemRow, EvaluationRow, GoldItemRow, ModelRow
+from likho_ml.models import EvaluationItemRow, EvaluationRow, GoldItemRow, ModelRow, TrainingRunRow
 from likho_ml.registry import NewModel, Registry, RegistryError
 from likho_ml.training import TrainingStore
 
@@ -124,12 +125,90 @@ async def answer[T](context: grpc.aio.ServicerContext, call: Callable[[], Awaita
         raise  # abort raises; this satisfies the type checker
 
 
+RUN_STATUS = {
+    "pending": ml_pb2.TRAINING_RUN_STATUS_PENDING,
+    "running": ml_pb2.TRAINING_RUN_STATUS_RUNNING,
+    "completed": ml_pb2.TRAINING_RUN_STATUS_COMPLETED,
+    "failed": ml_pb2.TRAINING_RUN_STATUS_FAILED,
+}
+RUN_STATUS_NAME = {value: key for key, value in RUN_STATUS.items()}
+
+
+def run_message(row: TrainingRunRow) -> ml_pb2.TrainingRun:
+    run = ml_pb2.TrainingRun(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        dataset_id=row.dataset_id,
+        base_model_id=row.base_model_id,
+        status=RUN_STATUS.get(row.status, ml_pb2.TRAINING_RUN_STATUS_UNSPECIFIED),
+        launcher=row.launcher,
+        external_id=row.external_id,
+        model_id=row.model_id,
+        error=row.error,
+        started_by=row.started_by,
+        created_at=timestamp(row.created_at),
+    )
+    if row.finished_at is not None:
+        run.finished_at.CopyFrom(timestamp(row.finished_at))
+    return run
+
+
 class MlServicer(ml_pb2_grpc.MlServiceServicer):
-    def __init__(self, registry: Registry, training: TrainingStore, gold: GoldSet, evaluations: Evaluations) -> None:
+    def __init__(
+        self,
+        registry: Registry,
+        training: TrainingStore,
+        gold: GoldSet,
+        evaluations: Evaluations,
+        finetuning: FineTuning,
+    ) -> None:
         self._registry = registry
         self._training = training
         self._gold = gold
         self._evaluations = evaluations
+        self._finetuning = finetuning
+
+    # ------------------------------------------------------------------------------ fine-tuning
+
+    async def ExportDataset(self, request: ml_pb2.ExportDatasetRequest, context: grpc.aio.ServicerContext) -> Any:
+        row = await answer(context, lambda: self._finetuning.export(request.workspace_id, request.user_id))
+        return ml_pb2.ExportDatasetResponse(
+            dataset=ml_pb2.Dataset(
+                id=row.id,
+                workspace_id=row.workspace_id,
+                uri=row.uri,
+                examples=row.examples,
+                audio_seconds=row.audio_seconds,
+                held_out_recordings=row.held_out_recordings,
+                created_by=row.created_by,
+                created_at=timestamp(row.created_at),
+            )
+        )
+
+    async def StartTrainingRun(self, request: ml_pb2.StartTrainingRunRequest, context: grpc.aio.ServicerContext) -> Any:
+        row = await answer(
+            context,
+            lambda: self._finetuning.start(
+                request.workspace_id, request.dataset_id, request.base_model_id, request.user_id
+            ),
+        )
+        return ml_pb2.StartTrainingRunResponse(run=run_message(row))
+
+    async def ListTrainingRuns(self, request: ml_pb2.ListTrainingRunsRequest, context: grpc.aio.ServicerContext) -> Any:
+        rows = await self._finetuning.runs(request.workspace_id)
+        return ml_pb2.ListTrainingRunsResponse(runs=[run_message(row) for row in rows])
+
+    async def ReportTrainingRun(
+        self, request: ml_pb2.ReportTrainingRunRequest, context: grpc.aio.ServicerContext
+    ) -> Any:
+        status = RUN_STATUS_NAME.get(request.status, "")
+        row = await answer(
+            context,
+            lambda: self._finetuning.report(
+                request.run_id, status, request.external_id, request.registry_id, request.artifact_uri, request.error
+            ),
+        )
+        return ml_pb2.ReportTrainingRunResponse(run=run_message(row))
 
     # ------------------------------------------------------------------------------ models
 

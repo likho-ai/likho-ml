@@ -123,6 +123,40 @@ class EvaluationRow(Base):
     __table_args__ = (Index("evaluations_model", "model_id", "status", "finished_at"),)
 
 
+class DatasetRow(Base):
+    """Training examples written to the models bucket for a fine-tuning run."""
+
+    __tablename__ = "datasets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(32))
+    uri: Mapped[str] = mapped_column(Text)
+    examples: Mapped[int] = mapped_column(Integer)
+    audio_seconds: Mapped[float] = mapped_column(Float)
+    held_out_recordings: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TrainingRunRow(Base):
+    """A fine-tuning run. status: pending, running, completed, failed."""
+
+    __tablename__ = "training_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(32))
+    dataset_id: Mapped[str] = mapped_column(String(32))
+    base_model_id: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))
+    launcher: Mapped[str] = mapped_column(String(200), default="")
+    external_id: Mapped[str] = mapped_column(String(200), default="")
+    model_id: Mapped[str] = mapped_column(String(32), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    started_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class EvaluationItemRow(Base):
     """One gold recording of an evaluation, transcribed and scored."""
 

@@ -21,13 +21,14 @@ dependencies = [
     "opentelemetry-exporter-prometheus>=0.51b0",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
     "prometheus-client>=0.21",
+    "boto3>=1.35",
 ]
 
 [project.scripts]
 likho-ml = "likho_ml.__main__:main"
 
 [tool.uv.sources]
-likho-contracts = { git = "https://github.com/likho-ai/likho-contracts", tag = "v0.14.0-rc.2", subdirectory = "packages/python" }
+likho-contracts = { git = "https://github.com/likho-ai/likho-contracts", tag = "v0.14.0-rc.3", subdirectory = "packages/python" }
 
 [dependency-groups]
 dev = [
@@ -65,7 +66,7 @@ warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
 # likho.* is the generated contracts package: it ships .pyi stubs but no py.typed marker yet.
-module = ["grpc.*", "grpc_health.*", "nats.*", "likho.*", "google.protobuf.*"]
+module = ["grpc.*", "grpc_health.*", "nats.*", "likho.*", "google.protobuf.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

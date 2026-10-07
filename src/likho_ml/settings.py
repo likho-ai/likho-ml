@@ -53,6 +53,20 @@ class Settings(BaseSettings):
     corrected_durable: str = "likho-ml-corrected"
     corrected_start: str = "all"
 
+    # The models bucket: datasets for fine-tuning go to s3://<bucket>/datasets/<id>/.
+    s3_endpoint: str = "http://localhost:9000"
+    s3_region: str = "us-east-1"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket_models: str = "likho-models"
+
+    # Where a training run is handed to: a GPU machine's agent or a cloud job's front, which gets
+    # the run as JSON (POST) and reports back with MlService.ReportTrainingRun. Empty: a run is
+    # recorded and waits as pending until someone starts it by hand.
+    launcher_url: str = ""
+    # The address the job reports back to (likho-ml's gRPC as the job can reach it).
+    report_address: str = "likho-ml:5080"
+
     @property
     def seed_model_ids(self) -> list[str]:
         return [item.strip() for item in self.seed_models.split(",") if item.strip()]

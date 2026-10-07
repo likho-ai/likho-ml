@@ -17,6 +17,7 @@ from likho_ml import __version__
 from likho_ml.db import make_engine, make_sessions, upgrade
 from likho_ml.evaluation import Evaluations
 from likho_ml.events import NatsPublisher
+from likho_ml.finetune import Bucket, FineTuning
 from likho_ml.gold import GoldSet
 from likho_ml.grpc_server import MlServicer
 from likho_ml.health import start_health_server
@@ -93,7 +94,15 @@ async def serve(settings: Settings, stop: asyncio.Event | None = None) -> None:
         options=[("grpc.max_receive_message_length", 8 * 1024 * 1024)],
         interceptors=[MetricsInterceptor(metrics)],
     )
-    ml_pb2_grpc.add_MlServiceServicer_to_server(MlServicer(registry, training, gold, evaluations), server)
+    bucket = Bucket(
+        endpoint=settings.s3_endpoint,
+        region=settings.s3_region,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        name=settings.s3_bucket_models,
+    )
+    finetuning = FineTuning(sessions, registry, bucket, settings.launcher_url, settings.report_address)
+    ml_pb2_grpc.add_MlServiceServicer_to_server(MlServicer(registry, training, gold, evaluations, finetuning), server)
     health_servicer = health.aio.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     await health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.SERVING)
