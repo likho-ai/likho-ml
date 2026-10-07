@@ -13,8 +13,7 @@ jobs:
   ci:
     uses: likho-ai/likho-infra/.github/workflows/python-ci.yml@main
     with:
-      # The integration tests come with the registry (step 10, piece 2); then "postgres nats".
-      stack-services: ""
+      stack-services: "postgres nats objectstore"
 
   publish:
     needs: ci
