@@ -13,7 +13,7 @@ jobs:
   ci:
     uses: likho-ai/likho-infra/.github/workflows/python-ci.yml@main
     with:
-      stack-services: "postgres nats"
+      stack-services: "postgres nats objectstore"
 
   publish:
     needs: ci

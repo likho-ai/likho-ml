@@ -89,12 +89,6 @@ async def test_what_the_registry_refuses(service: Service) -> None:
     assert by_name.registry_id == "faster-whisper/turbo"
 
 
-async def test_a_call_of_a_later_step_says_so(service: Service) -> None:
-    with pytest.raises(grpc.aio.AioRpcError) as later:
-        await service.stub.ExportDataset(ml_pb2.ExportDatasetRequest(workspace_id="wsp_x"))
-    assert later.value.code() == grpc.StatusCode.UNIMPLEMENTED
-
-
 def test_registry_ids() -> None:
     assert parse_registry_id("faster-whisper/turbo") == ("faster-whisper", "turbo")
     assert parse_registry_id(" faster-whisper/likho-2026.10 ") == ("faster-whisper", "likho-2026.10")
