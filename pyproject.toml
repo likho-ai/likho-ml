@@ -27,7 +27,7 @@ dependencies = [
 likho-ml = "likho_ml.__main__:main"
 
 [tool.uv.sources]
-likho-contracts = { git = "https://github.com/likho-ai/likho-contracts", tag = "v0.14.0-rc.1", subdirectory = "packages/python" }
+likho-contracts = { git = "https://github.com/likho-ai/likho-contracts", tag = "v0.14.0-rc.2", subdirectory = "packages/python" }
 
 [dependency-groups]
 dev = [

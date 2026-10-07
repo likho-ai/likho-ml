@@ -15,7 +15,9 @@ from sqlalchemy import text
 
 from likho_ml import __version__
 from likho_ml.db import make_engine, make_sessions, upgrade
+from likho_ml.evaluation import Evaluations
 from likho_ml.events import NatsPublisher
+from likho_ml.gold import GoldSet
 from likho_ml.grpc_server import MlServicer
 from likho_ml.health import start_health_server
 from likho_ml.metrics import MetricsInterceptor, shared
@@ -82,11 +84,16 @@ async def serve(settings: Settings, stop: asyncio.Event | None = None) -> None:
         await consumer.start()
         keeping = asyncio.create_task(consumer.run(stop))
 
+    gold = GoldSet(sessions, transcripts)
+    evaluations = Evaluations(sessions, registry, gold, transcripts, publisher)
+    await evaluations.recover()
+    evaluating = asyncio.create_task(evaluations.run(stop))
+
     server = grpc.aio.server(
         options=[("grpc.max_receive_message_length", 8 * 1024 * 1024)],
         interceptors=[MetricsInterceptor(metrics)],
     )
-    ml_pb2_grpc.add_MlServiceServicer_to_server(MlServicer(registry, training), server)
+    ml_pb2_grpc.add_MlServiceServicer_to_server(MlServicer(registry, training, gold, evaluations), server)
     health_servicer = health.aio.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     await health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.SERVING)
@@ -111,6 +118,7 @@ async def serve(settings: Settings, stop: asyncio.Event | None = None) -> None:
     await http.wait_closed()
     if keeping is not None:
         await keeping
+    await evaluating
     await transcripts.close()
     await publisher.close()
     await engine.dispose()
