@@ -10,15 +10,22 @@ from datetime import UTC, datetime
 
 import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
-from likho.ml.v1 import ml_pb2
+from likho.ml.v1 import ml_pb2, ml_pb2_grpc
 from sqlalchemy import text
 
 from likho_ml import __version__
-from likho_ml.db import make_engine, upgrade
+from likho_ml.db import make_engine, make_sessions, upgrade
+from likho_ml.evaluation import Evaluations
 from likho_ml.events import NatsPublisher
+from likho_ml.finetune import Bucket, FineTuning
+from likho_ml.gold import GoldSet
+from likho_ml.grpc_server import MlServicer
 from likho_ml.health import start_health_server
 from likho_ml.metrics import MetricsInterceptor, shared
+from likho_ml.registry import Registry
 from likho_ml.settings import Settings
+from likho_ml.training import CorrectionConsumer, TrainingStore
+from likho_ml.transcripts import TranscriptionClient
 
 log = logging.getLogger("likho_ml")
 
@@ -64,10 +71,38 @@ async def serve(settings: Settings, stop: asyncio.Event | None = None) -> None:
         # The registry still answers; changes are then not announced (readers also ask now and then).
         log.exception("event bus not reachable at %s; changes will not be announced", settings.nats_url)
 
+    sessions = make_sessions(engine)
+    registry = Registry(sessions, publisher)
+    await registry.seed(settings.seed_model_ids)
+    training = TrainingStore(sessions)
+    transcripts = TranscriptionClient(settings.transcription_grpc_addr, settings.rpc_timeout_seconds)
+
+    keeping: asyncio.Task[None] | None = None
+    if settings.consumers_enabled and publisher.connected:
+        consumer = CorrectionConsumer(
+            publisher.js, training, transcripts, settings.corrected_durable, settings.corrected_start, metrics
+        )
+        await consumer.start()
+        keeping = asyncio.create_task(consumer.run(stop))
+
+    gold = GoldSet(sessions, transcripts)
+    evaluations = Evaluations(sessions, registry, gold, transcripts, publisher)
+    await evaluations.recover()
+    evaluating = asyncio.create_task(evaluations.run(stop))
+
     server = grpc.aio.server(
         options=[("grpc.max_receive_message_length", 8 * 1024 * 1024)],
         interceptors=[MetricsInterceptor(metrics)],
     )
+    bucket = Bucket(
+        endpoint=settings.s3_endpoint,
+        region=settings.s3_region,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        name=settings.s3_bucket_models,
+    )
+    finetuning = FineTuning(sessions, registry, bucket, settings.launcher_url, settings.report_address)
+    ml_pb2_grpc.add_MlServiceServicer_to_server(MlServicer(registry, training, gold, evaluations, finetuning), server)
     health_servicer = health.aio.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     await health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.SERVING)
@@ -90,6 +125,10 @@ async def serve(settings: Settings, stop: asyncio.Event | None = None) -> None:
     await server.stop(grace=10)
     http.close()
     await http.wait_closed()
+    if keeping is not None:
+        await keeping
+    await evaluating
+    await transcripts.close()
     await publisher.close()
     await engine.dispose()
     await asyncio.to_thread(metrics.flush)
